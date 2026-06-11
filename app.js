@@ -94,6 +94,7 @@ function normalizeBoard(board) {
       columns: Number(board.columns || fallback.columns),
       selection: board.selection || fallback.selection,
       rate: Number(board.rate || fallback.rate),
+      showMessage: Boolean(board.showMessage),
       message: Array.isArray(board.message) ? board.message : [],
       homePageId: homePage.id,
       currentPageId: homePage.id,
@@ -115,6 +116,7 @@ function normalizeBoard(board) {
     columns: Number(board.columns || fallback.columns),
     selection: board.selection || fallback.selection,
     rate: Number(board.rate || fallback.rate),
+    showMessage: Boolean(board.showMessage),
     message: Array.isArray(board.message) ? board.message : [],
     homePageId,
     currentPageId,
@@ -129,7 +131,6 @@ let editMode = false;
 let activeIndex = null;
 let tempImage = '';
 let tempSymbol = '';
-let lockedScrollY = 0;
 let pendingUnlockProfileId = null;
 
 const grid = document.getElementById('grid');
@@ -138,12 +139,13 @@ const columnsSelect = document.getElementById('columnsSelect');
 const rowsSelect = document.getElementById('rowsSelect');
 const selectionMode = document.getElementById('selectionMode');
 const rateInput = document.getElementById('rateInput');
+const messageToggle = document.getElementById('messageToggle');
+const sentenceBar = document.querySelector('.sentence-bar');
 const messageText = document.getElementById('messageText');
 const speakMessage = document.getElementById('speakMessage');
 const clearMessage = document.getElementById('clearMessage');
 const resetBoard = document.getElementById('resetBoard');
 const boardSettings = document.getElementById('boardSettings');
-const currentProfileName = document.getElementById('currentProfileName');
 const profileButton = document.getElementById('profileButton');
 const currentPageName = document.getElementById('currentPageName');
 const boardPath = document.getElementById('boardPath');
@@ -240,7 +242,7 @@ function syncControlsToState() {
   setupSelect(rowsSelect, 1, 8, state.rows);
   selectionMode.value = state.selection;
   rateInput.value = state.rate;
-  currentProfileName.textContent = getCurrentProfile().name;
+  messageToggle.checked = Boolean(state.showMessage);
 }
 
 function ensureButtonCount() {
@@ -250,28 +252,13 @@ function ensureButtonCount() {
   if (page.buttons.length > total) page.buttons.length = total;
 }
 
-function setBoardScrollLocked(locked) {
-  if (locked) {
-    lockedScrollY = window.scrollY || 0;
-    document.body.classList.add('board-scroll-locked');
-  } else {
-    document.body.classList.remove('board-scroll-locked');
-    window.scrollTo(0, lockedScrollY);
-  }
-}
-
 function setEditMode(enabled) {
   editMode = enabled;
   document.body.classList.toggle('editing', editMode);
   boardSettings.hidden = !editMode;
   editToggle.textContent = editMode ? 'Done editing' : 'Edit board';
   editToggle.setAttribute('aria-pressed', String(editMode));
-  setBoardScrollLocked(!editMode);
   render();
-}
-
-function blockBoardScroll(event) {
-  if (!editMode) event.preventDefault();
 }
 
 function pagePath() {
@@ -295,13 +282,15 @@ function updatePageNav() {
 
 function render() {
   ensureButtonCount();
-  currentProfileName.textContent = getCurrentProfile().name;
+  messageToggle.checked = Boolean(state.showMessage);
+  sentenceBar.hidden = !state.showMessage;
   updatePageNav();
   grid.style.gridTemplateColumns = `repeat(${state.columns}, minmax(0, 1fr))`;
   grid.innerHTML = '';
   currentPage().buttons.forEach((button, index) => {
     const el = document.createElement('button');
     el.type = 'button';
+    el.dataset.index = String(index);
     const hasContent = button.label || button.spoken || button.symbol || button.image;
     el.className = `aac-button ${hasContent ? '' : 'empty'} ${button.action === 'folder' ? 'folder-button' : ''}`;
     el.style.background = button.color || '#ffffff';
@@ -340,8 +329,8 @@ function render() {
     }
 
     el.addEventListener('pointerdown', event => handleButtonPointerDown(event, index));
+    el.addEventListener('touchstart', event => handleButtonTouchStart(event, index), { passive: true });
     el.addEventListener('pointerup', event => {
-      if (!editMode) event.preventDefault();
       if (editMode) {
         el.classList.remove('pressed');
         openEditor(index);
@@ -378,13 +367,61 @@ function showPressedButtonAt(clientX, clientY) {
   target?.classList.add('pressed');
 }
 
+
+function handleButtonTouchStart(event, startIndex) {
+  if (editMode || state.selection !== 'release') return;
+  clearPressedButtons();
+  const firstTouch = event.touches?.[0];
+  if (firstTouch) showPressedButtonAt(firstTouch.clientX, firstTouch.clientY);
+
+  const touchId = firstTouch?.identifier;
+
+  const getTrackedTouch = list => {
+    if (touchId === undefined) return list?.[0] || null;
+    return Array.from(list || []).find(touch => touch.identifier === touchId) || null;
+  };
+
+  const handleMove = moveEvent => {
+    const touch = getTrackedTouch(moveEvent.touches);
+    if (!touch) return;
+    showPressedButtonAt(touch.clientX, touch.clientY);
+  };
+
+  const handleEnd = endEvent => {
+    const touch = getTrackedTouch(endEvent.changedTouches);
+    if (!touch) return;
+    const releaseIndex = buttonIndexFromPoint(touch.clientX, touch.clientY);
+    clearPressedButtons();
+    cleanup();
+    if (releaseIndex >= 0) activateButton(releaseIndex);
+  };
+
+  const handleCancel = cancelEvent => {
+    const touch = getTrackedTouch(cancelEvent.changedTouches);
+    if (!touch) return;
+    clearPressedButtons();
+    cleanup();
+  };
+
+  const cleanup = () => {
+    window.removeEventListener('touchmove', handleMove, { capture: true });
+    window.removeEventListener('touchend', handleEnd, { capture: true });
+    window.removeEventListener('touchcancel', handleCancel, { capture: true });
+  };
+
+  window.addEventListener('touchmove', handleMove, { capture: true, passive: true });
+  window.addEventListener('touchend', handleEnd, { capture: true, passive: true });
+  window.addEventListener('touchcancel', handleCancel, { capture: true, passive: true });
+}
+
 function handleButtonPointerDown(event, startIndex) {
   if (editMode) {
     event.currentTarget.classList.add('pressed');
     return;
   }
 
-  event.preventDefault();
+  if (event.pointerType === 'touch' && state.selection === 'release') return;
+
   clearPressedButtons();
 
   if (state.selection === 'touch') {
@@ -399,13 +436,11 @@ function handleButtonPointerDown(event, startIndex) {
 
   const handleMove = moveEvent => {
     if (moveEvent.pointerId !== pointerId) return;
-    moveEvent.preventDefault();
     showPressedButtonAt(moveEvent.clientX, moveEvent.clientY);
   };
 
   const handleUp = upEvent => {
     if (upEvent.pointerId !== pointerId) return;
-    upEvent.preventDefault();
     const releaseIndex = buttonIndexFromPoint(upEvent.clientX, upEvent.clientY);
     clearPressedButtons();
     cleanup();
@@ -727,6 +762,7 @@ function init() {
   rowsSelect.addEventListener('change', () => { state.rows = Number(rowsSelect.value); render(); });
   selectionMode.addEventListener('change', () => { state.selection = selectionMode.value; render(); });
   rateInput.addEventListener('input', () => { state.rate = Number(rateInput.value); saveState(); });
+  messageToggle.addEventListener('change', () => { state.showMessage = messageToggle.checked; render(); });
 
   editToggle.addEventListener('click', () => setEditMode(!editMode));
   backPage.addEventListener('click', goBackPage);
@@ -803,8 +839,6 @@ function init() {
     renderPreview();
   });
 
-  grid.addEventListener('touchmove', blockBoardScroll, { passive: false });
-  grid.addEventListener('pointermove', blockBoardScroll, { passive: false });
 
   setEditMode(false);
 }

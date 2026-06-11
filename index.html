@@ -18,16 +18,11 @@
       <p>Custom icon buttons that speak aloud</p>
     </div>
     <div class="header-actions">
-      <button id="profileButton" class="secondary-btn" type="button">Profiles</button>
       <button id="editToggle" class="primary-btn" type="button" aria-pressed="false">Edit board</button>
     </div>
   </header>
 
   <main>
-    <section class="profile-status" aria-label="Current profile">
-      <strong>Profile:</strong> <span id="currentProfileName">Default</span>
-    </section>
-
     <section class="page-nav" aria-label="Board page navigation">
       <div>
         <strong id="currentPageName">Home</strong>
@@ -61,6 +56,11 @@
         Voice speed
         <input id="rateInput" type="range" min="0.6" max="1.2" step="0.05" value="0.9" />
       </label>
+      <label class="checkbox-label">
+        <input id="messageToggle" type="checkbox" />
+        Show message window
+      </label>
+      <button id="profileButton" class="secondary-btn" type="button">Profiles</button>
       <button id="resetBoard" class="secondary-btn" type="button">Reset sample board</button>
     </section>
 
