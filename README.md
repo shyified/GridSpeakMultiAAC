@@ -58,3 +58,15 @@ When Select on release is enabled and Edit mode is off, the app now activates th
 ## Latest update
 
 Folder buttons can now be set to **Speak aloud + open folder/page**. This mode speaks the programmed spoken text first, adds it to the message window if enabled, and then opens the linked folder/page.
+
+
+Version note: 2026-06-11 action dropdown fix. The Button action menu includes Speak aloud + open folder/page.
+
+
+## Grid resizing and pagination update
+
+- Changing to a larger grid preserves existing buttons and adds blank buttons to fill the visible grid.
+- Changing to a smaller grid preserves all existing buttons and automatically creates numbered grid pages.
+- Buttons are ordered left-to-right, top-to-bottom when split across smaller grid pages.
+- In Edit Board mode, open a button and use **Move / swap placement** to swap it with a spot on another numbered grid page.
+- The button grid uses the available screen space so smaller grids produce larger buttons.
